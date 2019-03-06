@@ -516,7 +516,7 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
         }
         if (requestCode == REQUEST_BLUETOOTH) {
             if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                startScan(pendingCall, pendingResult);
+                // startScan(pendingCall, pendingResult);
             } else {
                 pendingResult.error("no_permissions", "flutter_blue plugin requires location permissions for scanning",
                         null);
@@ -527,7 +527,7 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
         }
         if (requestCode == REQUEST_BLUETOOTH_ADMIN) {
             if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                startScan(pendingCall, pendingResult);
+                // startScan(pendingCall, pendingResult);
             } else {
                 pendingResult.error("no_permissions", "flutter_blue plugin requires location permissions for scanning",
                         null);
@@ -646,17 +646,18 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
         }
     }
 
-    private void scanDevices(Context context, BluetoothDiscoveryCallback callback) {
+    /* ADDD FORM MI */
+    private void scanDevices() {
         System.out.println("llegamos a bluethood");
         BroadcastReceiver scanningBroadcastReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(final Context context, final Intent intent) {
                 if (BluetoothDevice.ACTION_FOUND.equals(intent.getAction())) {
                     BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                    callback.onDeviceFound(device);
+                    // callback.onDeviceFound(device);
                 } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(intent.getAction())) {
-                    context.unregisterReceiver(this);
-                    callback.onDiscoveryFinished();
+                    // context.unregisterReceiver(this);
+                    // callback.onDiscoveryFinished();
                 }
             }
         };
@@ -664,7 +665,7 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
         IntentFilter scanningItentFilter = new IntentFilter();
         scanningItentFilter.addAction(BluetoothDevice.ACTION_FOUND);
         scanningItentFilter.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
-        context.registerReceiver(scanningBroadcastReceiver, scanningItentFilter);
+        // context.registerReceiver(scanningBroadcastReceiver, scanningItentFilter);
 
         BluetoothAdapter.getDefaultAdapter().startDiscovery();
     }
