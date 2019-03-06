@@ -57,6 +57,8 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
     private static final String TAG = "FlutterBluePlugin";
     private static final String NAMESPACE = "plugins.pauldemarco.com/flutter_blue";
     private static final int REQUEST_COARSE_LOCATION_PERMISSIONS = 1452;
+    private static final int REQUEST_BLUETOOTH = 1452;
+    private static final int REQUEST_BLUETOOTH_ADMIN = 1452;
     static final private UUID CCCD_ID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
     private final Registrar registrar;
     private final MethodChannel channel;
@@ -502,6 +504,28 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
     @Override
     public boolean onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         if (requestCode == REQUEST_COARSE_LOCATION_PERMISSIONS) {
+            if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startScan(pendingCall, pendingResult);
+            } else {
+                pendingResult.error("no_permissions", "flutter_blue plugin requires location permissions for scanning",
+                        null);
+                pendingResult = null;
+                pendingCall = null;
+            }
+            return true;
+        }
+        if (requestCode == REQUEST_BLUETOOTH) {
+            if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startScan(pendingCall, pendingResult);
+            } else {
+                pendingResult.error("no_permissions", "flutter_blue plugin requires location permissions for scanning",
+                        null);
+                pendingResult = null;
+                pendingCall = null;
+            }
+            return true;
+        }
+        if (requestCode == REQUEST_BLUETOOTH_ADMIN) {
             if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 startScan(pendingCall, pendingResult);
             } else {
