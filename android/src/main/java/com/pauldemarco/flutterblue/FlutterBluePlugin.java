@@ -691,7 +691,7 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
     }
 
     private void doDiscovery(Result result) {
-        arrayOfFoundBTDevices = new ArrayList<BluetoothObject>();
+        ArrayList<BluetoothDevice> arrayOfFoundBTDevices = new ArrayList<BluetoothDevice>();
         IntentFilter filter = new IntentFilter();
 
         filter.addAction(BluetoothDevice.ACTION_FOUND);
@@ -720,16 +720,7 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
                         // but should be displayed in "dBm" units
                         int rssi = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE);
 
-                        // Create the device object and add it to the arrayList of devices
-                        BluetoothObject bluetoothObject = new BluetoothObject();
-                        bluetoothObject.setBluetooth_name(device.getName());
-                        bluetoothObject.setBluetooth_address(device.getAddress());
-                        bluetoothObject.setBluetooth_state(device.getBondState());
-                        bluetoothObject.setBluetooth_type(device.getType()); // requires API 18 or higher
-                        bluetoothObject.setBluetooth_uuids(device.getUuids());
-                        bluetoothObject.setBluetooth_rssi(rssi);
-
-                        arrayOfFoundBTDevices.add(bluetoothObject);
+                        arrayOfFoundBTDevices.add(device);
 
                         // mNewDevicesArrayAdapter.add(device.getName() + "\n" + device.getAddress());
                     } else {
@@ -750,13 +741,6 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
         };
         context.registerReceiver(mReceiver, filter);
         mBtAdapter.startDiscovery();
-    }
-
-    @Override
-    public void onDestroy() {
-        context.unregisterReceiver(mReceiver);
-
-        super.onDestroy();
     }
 
     private void stopScan() {
@@ -856,6 +840,18 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
 
     private EventSink scanResultsSink;
     private final StreamHandler scanResultsHandler = new StreamHandler() {
+        @Override
+        public void onListen(Object o, EventChannel.EventSink eventSink) {
+            scanResultsSink = eventSink;
+        }
+
+        @Override
+        public void onCancel(Object o) {
+            scanResultsSink = null;
+        }
+    };
+
+    private final StreamHandler scanClassicHandler = new StreamHandler() {
         @Override
         public void onListen(Object o, EventChannel.EventSink eventSink) {
             scanResultsSink = eventSink;
