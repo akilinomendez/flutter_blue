@@ -9,6 +9,8 @@ class FlutterBlue {
   final EventChannel _stateChannel = const EventChannel('$NAMESPACE/state');
   final EventChannel _scanResultChannel =
       const EventChannel('$NAMESPACE/scanResult');
+  final EventChannel _scanClassicChannel =
+      const EventChannel('$NAMESPACE/scanClassic');
   final EventChannel _servicesDiscoveredChannel =
       const EventChannel('$NAMESPACE/servicesDiscovered');
   final EventChannel _characteristicReadChannel =
@@ -17,6 +19,7 @@ class FlutterBlue {
       const EventChannel('$NAMESPACE/descriptorRead');
   final StreamController<MethodCall> _methodStreamController =
       new StreamController.broadcast(); // ignore: close_sinks
+
   Stream<MethodCall> get _methodStream => _methodStreamController
       .stream; // Used internally to dispatch methods from platform.
 
@@ -95,6 +98,46 @@ class FlutterBlue {
     yield* controller.stream
         .map((buffer) => new protos.ScanResult.fromBuffer(buffer))
         .map((p) => new ScanResult.fromProto(p));
+  }
+
+  Stream<Map> scanClassic({
+    ScanMode scanMode = ScanMode.lowLatency,
+    List<Guid> withServices = const [],
+    List<Guid> withDevices = const [],
+    Duration timeout,
+  }) async* {
+    var settings = protos.ScanSettings.create()
+      ..androidScanMode = scanMode.value
+      ..serviceUuids.addAll(withServices.map((g) => g.toString()).toList());
+    StreamSubscription subscription;
+    StreamController controller;
+    controller = new StreamController(
+      onListen: () {
+        if (timeout != null) {
+          new Future.delayed(timeout, () => controller.close());
+        }
+      },
+      onCancel: () {
+        _stopScan();
+        subscription.cancel();
+      },
+    );
+
+    await _channel.invokeMethod('scanClassic');
+
+    subscription = _scanClassicChannel.receiveBroadcastStream().listen(
+          controller.add,
+          onError: controller.addError,
+          onDone: controller.close,
+        );
+
+    yield* controller.stream.map((buffer) {
+      print(' buffferr ');
+      print(buffer);
+      Map result = new Map();
+      result.addAll(buffer);
+      return result;
+    });
   }
 
   /// Stops a scan for Bluetooth Low Energy devices

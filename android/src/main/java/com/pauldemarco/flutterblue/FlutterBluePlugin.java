@@ -54,8 +54,10 @@ import io.flutter.plugin.common.PluginRegistry.RequestPermissionsResultListener;
  * FlutterBluePlugin
  */
 public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsResultListener {
+
     private static final String TAG = "FlutterBluePlugin";
     private static final String NAMESPACE = "plugins.pauldemarco.com/flutter_blue";
+    private static Context context;
     private static final int REQUEST_COARSE_LOCATION_PERMISSIONS = 1452;
     private static final int REQUEST_BLUETOOTH = 1452;
     private static final int REQUEST_BLUETOOTH_ADMIN = 1452;
@@ -64,6 +66,7 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
     private final MethodChannel channel;
     private final EventChannel stateChannel;
     private final EventChannel scanResultChannel;
+    private final EventChannel scanClassicChannel;
     private final EventChannel servicesDiscoveredChannel;
     private final EventChannel characteristicReadChannel;
     private final EventChannel descriptorReadChannel;
@@ -71,6 +74,13 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
     private BluetoothAdapter mBluetoothAdapter;
     private final Map<String, BluetoothGatt> mGattServers = new HashMap<>();
     private LogLevel logLevel = LogLevel.EMERGENCY;
+
+    /// ADD
+    public static String EXTRA_DEVICE_ADDRESS = "device_address";
+    // Member fields
+    private BluetoothAdapter mBtAdapter = BluetoothAdapter.getDefaultAdapter();
+
+    /////
 
     // Pending call and result for startScan, in the case where permissions are
     // needed
@@ -83,13 +93,16 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
     public static void registerWith(Registrar registrar) {
         final FlutterBluePlugin instance = new FlutterBluePlugin(registrar);
         registrar.addRequestPermissionsResultListener(instance);
+
     }
 
     FlutterBluePlugin(Registrar r) {
         this.registrar = r;
+        context = r.context();
         this.channel = new MethodChannel(registrar.messenger(), NAMESPACE + "/methods");
         this.stateChannel = new EventChannel(registrar.messenger(), NAMESPACE + "/state");
         this.scanResultChannel = new EventChannel(registrar.messenger(), NAMESPACE + "/scanResult");
+        this.scanClassicChannel = new EventChannel(registrar.messenger(), NAMESPACE + "/scanClassic");
         this.servicesDiscoveredChannel = new EventChannel(registrar.messenger(), NAMESPACE + "/servicesDiscovered");
         this.characteristicReadChannel = new EventChannel(registrar.messenger(), NAMESPACE + "/characteristicRead");
         this.descriptorReadChannel = new EventChannel(registrar.messenger(), NAMESPACE + "/descriptorRead");
@@ -98,6 +111,7 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
         channel.setMethodCallHandler(this);
         stateChannel.setStreamHandler(stateHandler);
         scanResultChannel.setStreamHandler(scanResultsHandler);
+        scanClassicChannel.setStreamHandler(scanClassicHandler);
         servicesDiscoveredChannel.setStreamHandler(servicesDiscoveredHandler);
         characteristicReadChannel.setStreamHandler(characteristicReadHandler);
         descriptorReadChannel.setStreamHandler(descriptorReadHandler);
@@ -117,7 +131,36 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
             result.success(null);
             break;
         }
-
+        case "scanClassic": {
+            if (ContextCompat.checkSelfPermission(registrar.activity(),
+                    Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(registrar.activity(),
+                        new String[] { Manifest.permission.ACCESS_COARSE_LOCATION },
+                        REQUEST_COARSE_LOCATION_PERMISSIONS);
+                pendingCall = call;
+                pendingResult = result;
+                break;
+            }
+            if (ContextCompat.checkSelfPermission(registrar.activity(),
+                    Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(registrar.activity(), new String[] { Manifest.permission.BLUETOOTH },
+                        REQUEST_BLUETOOTH);
+                pendingCall = call;
+                pendingResult = result;
+                break;
+            }
+            if (ContextCompat.checkSelfPermission(registrar.activity(),
+                    Manifest.permission.BLUETOOTH_ADMIN) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(registrar.activity(),
+                        new String[] { Manifest.permission.BLUETOOTH_ADMIN }, REQUEST_BLUETOOTH_ADMIN);
+                pendingCall = call;
+                pendingResult = result;
+                break;
+            }
+            doDiscovery(result);
+            // startScan(call, result);
+            break;
+        }
         case "state": {
             Protos.BluetoothState.Builder p = Protos.BluetoothState.newBuilder();
             try {
@@ -181,8 +224,8 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
                 pendingResult = result;
                 break;
             }
-            scanDevices();
-            startScan(call, result);
+            doDiscovery(result);
+            // startScan(call, result);
             break;
         }
 
@@ -505,7 +548,7 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
     public boolean onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         if (requestCode == REQUEST_COARSE_LOCATION_PERMISSIONS) {
             if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                startScan(pendingCall, pendingResult);
+                // startScan(pendingCall, pendingResult);
             } else {
                 pendingResult.error("no_permissions", "flutter_blue plugin requires location permissions for scanning",
                         null);
@@ -625,6 +668,7 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
 
         @Override
         public void onCancel(Object o) {
+
             sink = null;
             registrar.activity().unregisterReceiver(mReceiver);
         }
@@ -646,34 +690,73 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
         }
     }
 
-    /* ADDD FORM MI */
-    private void scanDevices() {
-        System.out.println("llegamos a bluethood");
-        BroadcastReceiver scanningBroadcastReceiver = new BroadcastReceiver() {
+    private void doDiscovery(Result result) {
+        arrayOfFoundBTDevices = new ArrayList<BluetoothObject>();
+        IntentFilter filter = new IntentFilter();
+
+        filter.addAction(BluetoothDevice.ACTION_FOUND);
+        filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_STARTED);
+        filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
+        if (mBtAdapter.isDiscovering()) {
+            mBtAdapter.cancelDiscovery();
+        }
+
+        final BroadcastReceiver mReceiver = new BroadcastReceiver() {
+
             @Override
-            public void onReceive(final Context context, final Intent intent) {
-                if (BluetoothDevice.ACTION_FOUND.equals(intent.getAction())) {
+            public void onReceive(Context context, Intent intent) {
+                System.out.println("Llegamos aqui Bssdsd s ");
+                String action = intent.getAction();
+                // When discovery finds a device
+                if (BluetoothDevice.ACTION_FOUND.equals(action)) {
+                    // Get the BluetoothDevice object from the Intent
                     BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                    // callback.onDeviceFound(device);
-                } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(intent.getAction())) {
-                    // context.unregisterReceiver(this);
-                    // callback.onDiscoveryFinished();
+
+                    // If it's already paired, skip it, because it's been listed already
+                    if (device.getBondState() != BluetoothDevice.BOND_BONDED) {
+                        System.out.println("****** ENCONTRADO *****");
+                        System.out.println(device.getName());
+                        // Get the "RSSI" to get the signal strength as integer,
+                        // but should be displayed in "dBm" units
+                        int rssi = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE);
+
+                        // Create the device object and add it to the arrayList of devices
+                        BluetoothObject bluetoothObject = new BluetoothObject();
+                        bluetoothObject.setBluetooth_name(device.getName());
+                        bluetoothObject.setBluetooth_address(device.getAddress());
+                        bluetoothObject.setBluetooth_state(device.getBondState());
+                        bluetoothObject.setBluetooth_type(device.getType()); // requires API 18 or higher
+                        bluetoothObject.setBluetooth_uuids(device.getUuids());
+                        bluetoothObject.setBluetooth_rssi(rssi);
+
+                        arrayOfFoundBTDevices.add(bluetoothObject);
+
+                        // mNewDevicesArrayAdapter.add(device.getName() + "\n" + device.getAddress());
+                    } else {
+                        System.out.println("****** Ya emparejado *****");
+                        System.out.println(device.getName());
+                    }
+                    // When discovery is finished, change the Activity title
+                } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
+                    System.out.println("----- NO ENCONTRADO ------");
+                    result.succes(arrayOfFoundBTDevices);
+                    /*
+                     * if (mNewDevicesArrayAdapter.getCount() == 0) { String noDevices =
+                     * getResources().getText(R.string.none_found).toString(); //
+                     * mNewDevicesArrayAdapter.add(noDevices); }
+                     */
                 }
             }
         };
-
-        IntentFilter scanningItentFilter = new IntentFilter();
-        scanningItentFilter.addAction(BluetoothDevice.ACTION_FOUND);
-        scanningItentFilter.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
-        // context.registerReceiver(scanningBroadcastReceiver, scanningItentFilter);
-
-        BluetoothAdapter.getDefaultAdapter().startDiscovery();
+        context.registerReceiver(mReceiver, filter);
+        mBtAdapter.startDiscovery();
     }
 
-    private interface BluetoothDiscoveryCallback {
-        void onDeviceFound(BluetoothDevice bluetoothDevice);
+    @Override
+    public void onDestroy() {
+        context.unregisterReceiver(mReceiver);
 
-        void onDiscoveryFinished();
+        super.onDestroy();
     }
 
     private void stopScan() {
