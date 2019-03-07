@@ -730,7 +730,7 @@ public class FlutterBluePlugin implements MethodCallHandler, RequestPermissionsR
                     // When discovery is finished, change the Activity title
                 } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
                     System.out.println("----- NO ENCONTRADO ------");
-                    result.succes(arrayOfFoundBTDevices);
+                    result.success(arrayOfFoundBTDevices);
                     /*
                      * if (mNewDevicesArrayAdapter.getCount() == 0) { String noDevices =
                      * getResources().getText(R.string.none_found).toString(); //
